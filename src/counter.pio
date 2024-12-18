@@ -1,0 +1,14 @@
+; Count the number of cycles of an externally provided clock
+; and exposes on fifo[0]
+
+.program cycle_count
+.fifo txput
+
+.wrap_target
+  wait 1 pin 0
+  jmp x--, dummy
+dummy:
+  mov isr, ~x
+  mov rxfifo[0], isr
+  wait 0 pin 0
+.wrap

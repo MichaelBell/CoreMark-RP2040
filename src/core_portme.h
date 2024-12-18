@@ -123,7 +123,8 @@ typedef uint32_t  ee_size_t;
 /* Configuration : CORE_TICKS
         Define type of return from the timing functions.
  */
-#define CORETIMETYPE uint64_t
+//#define CORETIMETYPE uint64_t
+#define CORETIMETYPE uint32_t
 typedef CORETIMETYPE CORE_TICKS;
 
 /* Configuration : SEED_METHOD

@@ -29,6 +29,18 @@ Original Author: Shay Gal-on
 #include <time.h>
 #include <pico/stdlib.h>
 #include "hardware/adc.h"
+#include "hardware/pio.h"
+#include "hardware/pwm.h"
+
+#include "pico/bootrom.h"
+#include "hardware/vreg.h"
+#include "hardware/clocks.h"
+#include "hardware/watchdog.h"
+#include "hardware/timer.h"
+#include "hardware/irq.h"
+#include "hardware/structs/rosc.h"
+
+#include "counter.pio.h"
 
 #if VALIDATION_RUN
 volatile ee_s32 seed1_volatile = 0x3415;
@@ -57,11 +69,15 @@ volatile ee_s32 seed5_volatile = 0;
 */
 CORETIMETYPE barebones_clock()
 {
+    #if 0
     #ifndef NDEBUG
     return (CORETIMETYPE)to_us_since_boot(get_absolute_time());
     #else
     CORETIMETYPE t = to_us_since_boot(get_absolute_time());
     return t;
+    #endif
+    #else
+    return pio0->rxf_putget[0][0];
     #endif
 }
 /* Define : TIMER_RES_DIVIDER
@@ -135,10 +151,39 @@ secs_ret time_in_secs(CORE_TICKS ticks)
 
 ee_u32 default_num_contexts = 1;
 
-static struct repeating_timer timer;
-bool repeating_timer_callback(__unused struct repeating_timer *t) {
+#define ALARM_NUM 0
+#define ALARM_IRQ timer_hardware_alarm_get_irq_num(timer_hw, ALARM_NUM)
+
+void alarm_irq(void);
+
+static void alarm_in_us(uint32_t delay_us) {
+    // Enable the interrupt for our alarm (the timer outputs 4 alarm irqs)
+    hw_set_bits(&timer_hw->inte, 1u << ALARM_NUM);
+    // Set irq handler for alarm irq
+    irq_set_exclusive_handler(ALARM_IRQ, alarm_irq);
+    // Enable the alarm irq
+    irq_set_enabled(ALARM_IRQ, true);
+    // Enable interrupt in block and at processor
+
+    // Alarm is only 32 bits so if trying to delay more
+    // than that need to be careful and keep track of the upper
+    // bits
+    uint64_t target = timer_hw->timerawl + delay_us;
+
+    // Write the lower 32 bits of the target time to the alarm which
+    // will arm it
+    timer_hw->alarm[ALARM_NUM] = (uint32_t) target;
+}
+
+void alarm_irq(void) {
+    // Clear the alarm irq
+    hw_clear_bits(&timer_hw->intr, 1u << ALARM_NUM);
+
+    // Toggle LED
     gpio_xor_mask(1 << PICO_DEFAULT_LED_PIN);
-    return true;
+
+    // Reset alarm
+    alarm_in_us(500*1000);
 }
 
 /* References for this implementation:
@@ -163,13 +208,97 @@ void portable_init(core_portable *p, int *argc, char *argv[])
 {
     // Specific Init Code for RP 2040 with a nice welcome message
     stdio_init_all();
+
+    // Count time based on a 1MHz signal coming in on GPIO 2
+    uint pio_count_prog_offset = pio_add_program(pio0, &cycle_count_program);
+    pio_gpio_init(pio0, 2);
+    pio_sm_set_consecutive_pindirs(pio0, 0, 2, 1, false);
+
+    pio_sm_config c = cycle_count_program_get_default_config(pio_count_prog_offset);
+    sm_config_set_in_pins(&c, 2);
+    pio_sm_init(pio0, 0, pio_count_prog_offset, &c);
+    pio_sm_set_enabled(pio0, 0, true);
+
+    // Output divided system clock for measurement
+	gpio_set_function(3, GPIO_FUNC_PWM);
+	uint slice_num = pwm_gpio_to_slice_num(3);
+
+	// Set period of 1000 cycles (0 to 999 inclusive)
+    pwm_set_wrap(slice_num, 999);
+    // Set channel A output high for 500 cycles before dropping
+    pwm_set_chan_level(slice_num, PWM_CHAN_B, 500);
+    // Set the PWM running
+    pwm_set_enabled(slice_num, true);
+
+#if LIB_PICO_STDIO_USB    
     while (!stdio_usb_connected());
+#endif
     ee_printf("CoreMark Performance Benchmark\n\n");
     ee_printf("CoreMark measures how quickly your processor can manage linked\n");
     ee_printf("lists, compute matrix multiply, and execute state machine code.\n\n");
     ee_printf("Iterations/Sec is the main benchmark result, higher numbers are better.\n\n");
-    ee_printf("Press any key to continue.... \n\n\n");
-    getchar(); // PAUSE FOR HUMAN INPUT
+
+    ee_printf("Type S to begin\n");
+    while (getchar() != 'S');
+
+    ee_printf("Select voltage setting:\n");
+    ee_printf("0: Disable\n");
+    ee_printf("11: 1.1V\n");
+    ee_printf("13: 1.2V\n");
+    ee_printf("15: 1.3V\n");
+    ee_printf("18: 1.5V\n");
+    ee_printf("21: 1.7V\n");
+
+    int volt_selection;
+    scanf("%d", &volt_selection);
+
+    if (volt_selection == 0) {
+        hw_set_bits(&powman_hw->vreg_ctrl, POWMAN_PASSWORD_BITS | POWMAN_VREG_CTRL_UNLOCK_BITS);
+        hw_set_bits(&powman_hw->vreg, POWMAN_PASSWORD_BITS | POWMAN_VREG_HIZ_BITS);
+    }
+    else {
+        if (volt_selection & 0x10)
+            vreg_disable_voltage_limit();
+        
+        vreg_set_voltage(volt_selection);
+    }
+
+    ee_printf("Set voltage to setting %d\n", volt_selection);
+
+    ee_printf("Frequency setting, in MHz or 0 for ROSC:\n");
+
+    int freq_mhz;
+    scanf("%d", &freq_mhz);
+
+    if (freq_mhz == 0) {
+        // This will move the UART on to the USB clock
+        set_sys_clock_khz(150 * 1000, true);
+
+        // Enable ROSC at TOOHIGH
+        rosc_hw->ctrl = 0xfabfa6;
+
+        // Set drive strengths to 2.5
+        rosc_hw->freqa = 0x96962323;
+        rosc_hw->freqb = 0x96962323;
+
+        // Set divider to 1
+        rosc_hw->div = 0xaa01;
+
+        // Now switch over to ROSC
+        clock_configure_undivided(clk_sys,
+                        CLOCKS_CLK_SYS_CTRL_SRC_VALUE_CLKSRC_CLK_SYS_AUX,
+                        CLOCKS_CLK_SYS_CTRL_AUXSRC_VALUE_ROSC_CLKSRC,
+                        300 * 1000);
+    }
+    else {
+        set_sys_clock_khz(freq_mhz * 1000, true);
+    }
+
+    stdio_init_all();
+
+    ee_printf("Set frequency to %dMHz\n", freq_mhz);
+
+    //getchar(); // PAUSE FOR HUMAN INPUT
     ee_printf("Running.... (usually requires 12 to 20 seconds)\n\n");
 
     #ifndef PICO_DEFAULT_LED_PIN
@@ -180,7 +309,7 @@ void portable_init(core_portable *p, int *argc, char *argv[])
     gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
     gpio_put(PICO_DEFAULT_LED_PIN, 1); // Set pin 25 to high
 
-    add_repeating_timer_ms(500, repeating_timer_callback, NULL, &timer);
+    alarm_in_us(500 * 1000);
 
     #endif
 
@@ -226,6 +355,14 @@ void portable_fini(core_portable *p)
 
     while (true) {
         // Do nothing
+    }
+#else
+    int c = stdio_getchar_timeout_us(100);
+
+    if (c == 'C') {
+        watchdog_reboot(0, 0, 0);
+    } else if (c == 'R') {
+        rom_reset_usb_boot_extra(-1, 0, false);
     }
 #endif
 }
