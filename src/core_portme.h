@@ -79,10 +79,10 @@ Original Author: Shay Gal-on
 #endif
 #endif
 #ifndef COMPILER_FLAGS
-        #define COMPILER_FLAGS "og"/* "Please put compiler flags here (e.g. -o3)" */
+        #define COMPILER_FLAGS "O3"/* "Please put compiler flags here (e.g. -o3)" */
 #endif
 #ifndef MEM_LOCATION
-        #define MEM_LOCATION "STACK"
+        #define MEM_LOCATION "HEAP"
 #endif
 
 /************************/
@@ -148,8 +148,11 @@ typedef CORETIMETYPE CORE_TICKS;
         MEM_STACK - to allocate the data block on the stack (NYI).
 */
 #ifndef MEM_METHOD
-#define MEM_METHOD MEM_STACK
+#define MEM_METHOD MEM_MALLOC
 #endif
+
+#define portable_malloc malloc
+#define portable_free free
 
 /* Configuration : MULTITHREAD
         Define for parallel execution

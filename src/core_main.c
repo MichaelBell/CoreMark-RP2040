@@ -107,6 +107,13 @@ MAIN_RETURN_TYPE main(int argc, char *argv[])
 #endif
     /* first call any initializations needed */
     portable_init(&(results[0].port), &argc, argv);
+
+    // HACK TO USE FOR STRESS TESTING
+    while (true) {
+    j = 0, num_algorithms = 0;
+    known_id = -1, total_errors = 0;
+    seedcrc = 0;
+    
     /* First some checks to make sure benchmark will run ok */
     if (sizeof(struct list_head_s) > 128)
     {
@@ -313,6 +320,7 @@ for (i = 0; i < MULTITHREAD; i++)
     }
     total_errors += check_data_types();
     /* and report results */
+#if 0
     ee_printf("CoreMark Size    : %lu\n", (long unsigned)results[0].size);
     ee_printf("Total ticks      : %lu\n", (long unsigned)total_time);
 #if HAS_FLOAT
@@ -350,6 +358,7 @@ for (i = 0; i < MULTITHREAD; i++)
             ee_printf("[%d]crcstate      : 0x%04x\n", i, results[i].crcstate);
     for (i = 0; i < default_num_contexts; i++)
         ee_printf("[%d]crcfinal      : 0x%04x\n", i, results[i].crc);
+#endif
     if (total_errors == 0)
     {
         ee_printf("Correct operation validated. See README.md for run and reporting rules.\n");
@@ -379,8 +388,12 @@ for (i = 0; i < MULTITHREAD; i++)
     for (i = 0; i < MULTITHREAD; i++)
         portable_free(results[i].memblock[0]);
 #endif
+
     /* And last call any target specific code for finalizing */
     portable_fini(&(results[0].port));
+
+    // HACK stress testing
+    }
 
     return MAIN_RETURN_VAL;
 }

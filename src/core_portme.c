@@ -27,6 +27,8 @@ Original Author: Shay Gal-on
 #include "coremark.h"
 #include "core_portme.h"
 #include <time.h>
+#include <pico/stdlib.h>
+#include "hardware/adc.h"
 
 #if VALIDATION_RUN
 volatile ee_s32 seed1_volatile = 0x3415;
@@ -70,12 +72,12 @@ CORETIMETYPE barebones_clock()
    does not occur. If there are issues with the return value overflowing,
    increase this value.
         */
-#define CLOCKS_PER_SEC 1000000.0
+#define BB_CLOCKS_PER_SEC 1000000.0
 #define GETMYTIME(_t) (*_t = barebones_clock())
 #define MYTIMEDIFF(fin, ini) ((fin) - (ini))
 #define TIMER_RES_DIVIDER 1
 #define SAMPLE_TIME_IMPLEMENTATION 1
-#define EE_TICKS_PER_SEC (CLOCKS_PER_SEC / TIMER_RES_DIVIDER)
+#define EE_TICKS_PER_SEC (BB_CLOCKS_PER_SEC / TIMER_RES_DIVIDER)
 /** Define Host specific (POSIX), or target specific global time variables. */
 static CORETIMETYPE start_time_val, stop_time_val;
 
@@ -133,6 +135,26 @@ secs_ret time_in_secs(CORE_TICKS ticks)
 
 ee_u32 default_num_contexts = 1;
 
+static struct repeating_timer timer;
+bool repeating_timer_callback(__unused struct repeating_timer *t) {
+    gpio_xor_mask(1 << PICO_DEFAULT_LED_PIN);
+    return true;
+}
+
+/* References for this implementation:
+ * raspberry-pi-pico-c-sdk.pdf, Section '4.1.1. hardware_adc'
+ * pico-examples/adc/adc_console/adc_console.c */
+float read_onboard_temperature() {
+    
+    /* 12-bit conversion, assume max value == ADC_VREF == 3.3 V */
+    const float conversionFactor = 3.3f / (1 << 12);
+
+    float adc = (float)adc_read() * conversionFactor;
+    float tempC = 27.0f - (adc - 0.706f) / 0.001721f;
+
+    return tempC;
+}
+
 /* Function : portable_init
         Target specific initialization code
         Test for some common mistakes.
@@ -141,14 +163,34 @@ void portable_init(core_portable *p, int *argc, char *argv[])
 {
     // Specific Init Code for RP 2040 with a nice welcome message
     stdio_init_all();
-    getchar(); // PAUSE FOR HUMAN INPUT
+    while (!stdio_usb_connected());
     ee_printf("CoreMark Performance Benchmark\n\n");
-    ee_printf("CoreMark measures how quickly your processor can manage linked\n\n");
+    ee_printf("CoreMark measures how quickly your processor can manage linked\n");
     ee_printf("lists, compute matrix multiply, and execute state machine code.\n\n");
     ee_printf("Iterations/Sec is the main benchmark result, higher numbers are better.\n\n");
     ee_printf("Press any key to continue.... \n\n\n");
+    getchar(); // PAUSE FOR HUMAN INPUT
     ee_printf("Running.... (usually requires 12 to 20 seconds)\n\n");
 
+    #ifndef PICO_DEFAULT_LED_PIN
+    #warning This program requires a board with a regular LED. Replace this line with your own stuff.
+
+    #else
+    gpio_init(PICO_DEFAULT_LED_PIN);
+    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+    gpio_put(PICO_DEFAULT_LED_PIN, 1); // Set pin 25 to high
+
+    add_repeating_timer_ms(500, repeating_timer_callback, NULL, &timer);
+
+    #endif
+
+    adc_init();
+    adc_set_temp_sensor_enabled(true);
+    adc_select_input(4);
+    float temperature = read_onboard_temperature();
+    sleep_ms(100);
+    temperature = read_onboard_temperature();
+    printf("Temp = %.02fC\n", temperature);
 
     if (sizeof(ee_ptr_int) != sizeof(ee_u8 *))
     {
@@ -169,34 +211,33 @@ void portable_init(core_portable *p, int *argc, char *argv[])
 */
 void portable_fini(core_portable *p)
 {
+    float temperature = read_onboard_temperature();
+    printf("Temp = %.02fC\n", temperature);
+
+    multicore_reset_core1();
+
+#if 0
     p->portable_id = 0;
-    // initialise GPIO (Green LED connected to pin 25)
 
-    #ifndef PICO_DEFAULT_LED_PIN
-    #warning This program requires a board with a regular LED. Replace this line with your own stuff.
-
-    #else
     ee_printf("\n\nProgram Ended\n");
-    gpio_init(PICO_DEFAULT_LED_PIN);
-    gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-    while(true)
-    {
-        gpio_put(PICO_DEFAULT_LED_PIN, 1); // Set pin 25 to high
-        sleep_ms(1000); // 1s delay
 
-        gpio_put(PICO_DEFAULT_LED_PIN, 0); // Set pin 25 to low
-        sleep_ms(1000); // 1s delay
+    cancel_repeating_timer(&timer);
+    gpio_put(PICO_DEFAULT_LED_PIN, 1);
+
+    while (true) {
+        // Do nothing
     }
-    #endif
+#endif
 }
 /* Function : core1_func 
     This function is the entry point for core 1
 */
 
-volatile core_results *global_results;
-volatile bool core1_finished = false;
+//volatile core_results *global_results;
+//volatile bool core1_finished = false;
 extern void *iterate(void *pres);
 
+#if 0
 /* Function : test_global_results
         Test that every value in struct global_results matches that in struct results[1]
 */
@@ -227,12 +268,13 @@ void test_global_results(core_results *results)
         ee_printf("Mismatch in err\n");
     // Add more checks as needed for other fields in the struct
 }
-
+#endif
 
 void core1_func(void)
 {
-    iterate(&global_results); // TODO: Fix the errors its running this
-    core1_finished = true;
+    core_results *results = (core_results *)multicore_fifo_pop_blocking();
+    iterate(results); // TODO: Fix the errors its running this
+    multicore_fifo_push_blocking(0);
 }
 
 /* Function : core_start_parallel
@@ -240,18 +282,19 @@ void core1_func(void)
 */
 void core_start_parallel(ee_u16 core_index, core_results *results)
 {
-    if (core_index == 1)
+    // Core index 0 is started first, and this function is expected to exit in 
+    // order to start the next core, so start core 1 when core index is 0.
+    if (core_index == 0)
     {
         ee_printf("Starting core 1 iterations\n");
-        global_results = (volatile core_results*) &results;
+        //global_results = (volatile core_results*) &results;
         multicore_launch_core1(core1_func);
-        // test_global_results(results);
-
+        multicore_fifo_push_blocking((uintptr_t)results);
     }
     else
     {
         ee_printf("Starting core 0 iterations\n");
-        iterate(&results);
+        iterate(results);
     }
 }
 
@@ -260,12 +303,9 @@ void core_start_parallel(ee_u16 core_index, core_results *results)
 */
 void core_end_parallel(ee_u16 core_index)
 {
+    if (core_index == 0) {
+        multicore_fifo_pop_blocking();
+    }
     
-    ee_printf("Core %d finished - %d \n", core_index, core1_finished);
-    // while(!core1_finished)
-    // {
-    //     tight_loop_contents(); // RP2040 specific NO-OP
-    // }
-    // // Reset core 1 after parallel execution
-    // multicore_reset_core1(); // TODO: remove for timing reasons later on
+    ee_printf("Core %d finished\n", core_index ^ 1);
 }
