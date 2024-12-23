@@ -27,7 +27,7 @@ This was the first time I'd really felt an RP2 chip getting hot - RP2040s runnin
 
 ## Adding some cooling
 
-![Pico 2 with a small heatsink attached and a relatively large fan pointing at it](images/heatsinkfanpico2.jpg)
+<img src="images/heatsinkfanpico2.jpg" alt="Pico 2 with a small heatsink attached and a relatively large fan pointing at it" style="width: 30em">
 
 To combat the heat issue I added a tiny heatsink to the RP2350 on the Pico 2, and set up a small PC fan pointing at it to give good airflow.  I again [live bleated](https://bsky.app/profile/rebelmike.bsky.social/post/3ld53kzoqos2q) the experiment, pushing the RP2350 to higher voltages and clock speeds:
 
@@ -81,17 +81,17 @@ First up we needed to get all three Picos involved in the setup, and the surroun
 
 We got the test Pico 2 running at 100MHz to establish a baseline.  Jon at Pimoroni also pointed out that to make things easier to read it would be better to report a number in MHz instead of the CoreMark score, this was acheived simply by taking the ratio of the CoreMark score at 100MHz to the CoreMark being reported.  As the CoreMark was running from internal RAM the score should be entirely linear with frequency.
 
-![Monitor showing -80 degrees C and 100MHz](100Mhz.jpg)
+<img src="images/100Mhz.jpg" alt="Monitor showing -80 degrees C and 100MHz" style="width: 30em">
 
 ## Let's cool the Pico 2!
 
 Next up we got the Pico 2 I'd been using for all the testing so far, complete with its tiny heatsink, and covered it in dry ice.
 
-![A pile of dry ice covering a Pico 2, with various wires coming out, some connected to a Pico W sitting outside of the box](DryIce.jpg)
+<img src="images/DryIce.jpg" alt="A pile of dry ice covering a Pico 2, with various wires coming out, some connected to a Pico W sitting outside of the box" style="width: 30em">
 
 We did some initial testing using the internal voltage regulator, and got it stable at 700MHz with ease:
 
-![Monitor showing -64C and 700MHz in the background, and the Pico 2 in dry ice in the foreground](700MHz.jpg)
+<img src="images/700MHz.jpg" alt="Monitor showing -64C and 700MHz in the background, and the Pico 2 in dry ice in the foreground" style="width: 30em">
 
 ## Let's cook the Pico 2!
 
@@ -101,7 +101,7 @@ Up and up the voltage went, and while we got diminishing returns on the frequenc
 
 Here we got to 800MHz at 2.8V:
 
-![Monitor showing -51C and 800MHz in the background, the Pico 2 in dry ice in the foreground, now connected to a bench supply on the left.  The bench supply reads 2.8V and 600mA](800MHz.jpg)
+<img src="images/800MHz.jpg" alt="Monitor showing -51C and 800MHz in the background, the Pico 2 in dry ice in the foreground, now connected to a bench supply on the left.  The bench supply reads 2.8V and 600mA" style="width: 30em">
 
 We realised our setup here was not ideal, as the ground for the core voltage was going via the Pico W.  We measured the voltage at the Pico in the dry ice and it was around 200mV lower than the voltage being supplied, due to the resistance through that long path.  With that in mind we pushed the voltage up to 3.3V and even a little higher, but it didn't allow that much more speed - the fastest we got to was 840MHz and that wasn't stable for long, we think due to the RP2350 heating up while drawing around 1A of current!
 
@@ -127,13 +127,13 @@ Despite being the fastest at 1.1V, the first Pico 2 we tested wasn't that much b
 
 Thinking that a lot of the problem in getting faster was just the chip warming up too fast, we looked for a larger thermal mass to try and keep it cooler for longer.  Paul produced a big chunk of copper, significantly larger than the Pico 2 itself, which seemed promising.
 
-![A Pico 2 stuck to the side of a large rectangular block of copper](BigBlockOfCopper.jpg)
+<img src="images/BigBlockOfCopper.jpg" alt="A Pico 2 stuck to the side of a large rectangular block of copper" style="width: 30em">
 
 We tried attaching this to the Pico 2 with a couple of thermal pads, but it seems they didn't provide great thermal conductivity at these low temperatures, because the results were actually worse with this than without any heatsink at all!  That was a shame - maybe we should have tried just getting direct contact of the copper on top of the chip, but we were worried about shorts.
 
-We switched over to the other Pico 2 and attached a heatsink designed for the BCM2712(check!) on the Pi 5 to it.  That got better results - obviously the simple test at 1.1V room temperature doesn't account for everything!  This one would briefly manage 864MHz requested (reported 860.7MHz), and would run stable at 840MHz for some time, with no errors.  The best so far!
+We switched over to the other Pico 2 and attached a heatsink designed for the BCM2712 on the Pi 5 to it.  That got better results - obviously the simple test at 1.1V room temperature doesn't account for everything!  This one would briefly manage 864MHz requested (reported 860.7MHz), and would run stable at 840MHz for some time, with no errors.  The best so far!
 
-<img of heatsink frosting>
+<img src="images/HeatsinkFrost.jpg" alt="A Pico 2 with a relatively large heatsink attached, the heatsink is frosty" style="width: 30em">
 
 ## Testing the RISC-V cores
 
@@ -149,7 +149,7 @@ Ramping the voltage up again running off the ring oscillator, with the drive str
 
 Switching over to the crystal, with 3.05V we got 861.6MHz (864MHz requested) running cleanly, and it even ran for nearly a minute at 873.5MHz before crashing.  We had no luck trying to get a requested frequency of 888MHz to run.
 
-![Monitor showing -37C and 873MHz](873MHz.jpg)
+<img src="images/873MHz.jpg" alt="Monitor showing -37C and 873MHz" style="width: 30em">
 
 So the top speed we managed was 873.5MHz, though when we tried this again the Pico refused to start at 3.05V, so I guess we were beginning to cause some damage with the high voltage.
 
