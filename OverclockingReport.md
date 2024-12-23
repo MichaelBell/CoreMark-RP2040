@@ -60,7 +60,7 @@ Solid CO2 (dry ice), on the other hand, is relatively easy to acquire and requir
 
 I wanted to make sure we were pretty rigorous about the testing - unlike the earlier experiments using the MicroPython performance benchmark, I wanted to get both cores running flat out.  Therefore I decided to use the freely available CoreMark benchmark as the test, as this would report result comparable to other CPUs, and it would check for correct operation and report errors if there were problems.
 
-I also wanted the option of running the Pico from the ring oscillator, as described in the Raspberry Pi article linked at the top.  Addidtionally, we weren't quite sure whether the crystal oscillator frequence might be changed by very low temperatures.  Therefore, to measure time accurately I sent a 1MHz clock into the Pico 2 under test, and used a [simple PIO program](src/counter.pio) to count the cycles.  This allowed us to run from the ring oscillator or crystal, and get accurate benchmark results measured using a known good clock.
+I also wanted the option of running the Pico from the ring oscillator, as described in the Raspberry Pi article linked at the top.  Addidtionally, we weren't quite sure whether the crystal oscillator frequency might be changed by very low temperatures.  Therefore, to measure time accurately I sent a 1MHz clock into the Pico 2 under test, and used a [simple PIO program](src/counter.pio) to count the cycles.  This allowed us to run from the ring oscillator or crystal, and get accurate benchmark results measured using a known good clock.
 
 I also made some other adaptations to [Protik Banerji's version of Coremark for RP2040](https://github.com/protik09/CoreMark-RP2040):
 - Compiling for RP2350, and getting two core operation working
