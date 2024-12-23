@@ -218,6 +218,7 @@ for (i = 0; i < MULTITHREAD; i++)
         }
     }
 
+#if 0
     /* automatically determine number of iterations if not set */
     if (results[0].iterations == 0)
     {
@@ -238,6 +239,8 @@ for (i = 0; i < MULTITHREAD; i++)
             divisor = 1;
         results[0].iterations *= 1 + 10 / divisor;
     }
+#endif
+    results[0].iterations = 4000;
     /* perform actual benchmark */
     start_time();
 #if (MULTITHREAD > 1)
